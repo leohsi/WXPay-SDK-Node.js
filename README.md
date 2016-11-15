@@ -22,7 +22,7 @@ WXPay类下提供了对应的方法：
 各个方法都以Promise的形式实现。
 
 参数为JS对象，返回类型也是JS对象。
-方法内部会将参数会转换成含有appid、mch_id、nonce_str和sign的XML；
+方法内部会将参数会转换成含有`appid`、`mch_id`、`nonce_str`和`sign`的XML格式数据；
 通过HTTPS请求得到返回数据后会对其做必要的处理（例如验证签名，签名错误则抛出异常）。
 
 对于downloadBill，无论是否成功都返回JS对象，且都含有`return_code`和`return_msg`。
