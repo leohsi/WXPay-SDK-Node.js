@@ -1,9 +1,9 @@
-wxpay.js
+微信支付 Node.js SDK wxpay.js
 -------
 
-微信支付 Nodejs SDK
+对[微信支付开发者文档](https://pay.weixin.qq.com/wiki/doc/api/index.html)中给出的API进行了封装。
 
-对微信支付开发者文档中给出的API进行了封装。WXPay类下提供了对应的方法：
+WXPay类下提供了对应的方法：
 
 |方法名 | 说明 |
 |--------|--------|
@@ -46,7 +46,7 @@ var APPID = 'wx8888888888',
     KEY = '8888888888888888888888888888888',
     CERT_FILE_CONTENT = fs.readFileSync('/path/to/apiclient_cert.p12'),
     CA_FILE_CONTENT = fs.readFileSync('/path/to/rootca.pem'),
-    TIMEOUT = 10000; // ms
+    TIMEOUT = 10000; // 毫秒
 
 var wxpay = new WXPay(APPID, MCHID, KEY, CERT_FILE_CONTENT, CA_FILE_CONTENT, TIMEOUT);
 
@@ -55,9 +55,10 @@ var reqObj = {
   out_trade_no: '1478582754970',
   total_fee: 1,
   spbill_create_ip: '123.12.12.123',
-  notify_url: 'http://www.example.me',
+  notify_url: 'http://www.example.com',
   trade_type: 'NATIVE'
 };
+
 wxpay.unifiedOrder(reqObj).then(function(respObj) {
   console.log(respObj);
 }).catch(function(err) {
