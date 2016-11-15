@@ -1,4 +1,4 @@
-微信支付 Node.js SDK wxpay.js
+微信支付 Node.js SDK
 -------
 
 对[微信支付开发者文档](https://pay.weixin.qq.com/wiki/doc/api/index.html)中给出的API进行了封装。
