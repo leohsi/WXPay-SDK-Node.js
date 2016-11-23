@@ -8,7 +8,7 @@ var uuid    = require('uuid');
 
 
 var _SIGN = "sign";
-var _DEFAULT_TIMEOUT = 6000; // ms
+var _DEFAULT_TIMEOUT = 10*1000; // ms
 
 var _MICROPAY_URL     = 'https://api.mch.weixin.qq.com/pay/micropay',
     _UNIFIEDORDER_URL = 'https://api.mch.weixin.qq.com/pay/unifiedorder',
@@ -25,8 +25,9 @@ var _MICROPAY_URL     = 'https://api.mch.weixin.qq.com/pay/micropay',
 var WXPayUtil = {
 
   /**
-   * XML字符串转换成object
-   * @param xmlStr
+   * XML 字符串转换成 object
+   *
+   * @param {string} xmlStr
    * @returns {Promise}
    */
   xml2obj: function (xmlStr) {
@@ -50,8 +51,9 @@ var WXPayUtil = {
   },
 
   /**
-   * object转换成XML字符串
-   * @param obj
+   * object 转换成 XML 字符串
+   *
+   * @param {object} obj
    * @returns {Promise}
    */
   obj2xml: function (obj) {
@@ -68,8 +70,9 @@ var WXPayUtil = {
 
   /**
    * 生成签名
-   * @param dataObj
-   * @param keyStr
+   *
+   * @param {object} dataObj
+   * @param {string} keyStr
    * @returns {Promise}
    */
   generateSignature: function (dataObj, keyStr) {
@@ -94,8 +97,9 @@ var WXPayUtil = {
 
   /**
    * 验证签名
-   * @param dataObj
-   * @param keyStr
+   *
+   * @param {object} dataObj
+   * @param {string} keyStr
    * @returns {Promise}
    */
   isSignatureValid: function (dataObj, keyStr) {
@@ -118,14 +122,14 @@ var WXPayUtil = {
 
   /**
    * 生成签名
-   * @param dataObj
-   * @param keyStr
-   * @returns {string}
+   *
+   * @param {object} dataObj
+   * @param {string} keyStr
+   * @returns {Promise}
    */
   generateSignedXml: function (dataObj, keyStr) {
     return new Promise(function (resolve, reject) {
       var clonedDataObj = JSON.parse(JSON.stringify(dataObj));
-      // console.log('clonedDataObj:', clonedDataObj);
       WXPayUtil.generateSignature(clonedDataObj, keyStr).then(function (sign) {
         clonedDataObj[_SIGN] = sign;
         return WXPayUtil.obj2xml(clonedDataObj);
@@ -139,6 +143,7 @@ var WXPayUtil = {
 
   /**
    * 生成随机字符串
+   *
    * @returns {Promise}
    */
   generateNonceStr: function () {
@@ -151,29 +156,32 @@ var WXPayUtil = {
 
 /**
  * WXPay对象
- * @param APPID
- * @param MCHID
- * @param KEY
- * @param CERT_FILE_CONTENT
- * @param CA_FILE_CONTENT
- * @param TIMEOUT
+ *
+ * @param {string} appId
+ * @param {string} mchId
+ * @param {string} key
+ * @param {string} certFileContent
+ * @param {string} caFileContent
+ * @param {int} timeout
  * @constructor
  */
-var WXPay = function (APPID, MCHID, KEY, CERT_FILE_CONTENT, CA_FILE_CONTENT, TIMEOUT) {
+var WXPay = function (appId, mchId, key, certFileContent, caFileContent, timeout) {
   if(!(this instanceof WXPay)) {
     throw new TypeError('Please use \'new WXPay\'');
   }
-  this.APPID = APPID;
-  this.MCHID = MCHID;
-  this.KEY = KEY;
-  this.CERT_FILE_CONTENT = CERT_FILE_CONTENT;
-  this.CA_FILE_CONTENT = CA_FILE_CONTENT;
-  this.TIMEOUT = TIMEOUT || 10000;
+  this.APPID = appId;
+  this.MCHID = mchId;
+  this.KEY = key;
+  this.CERT_FILE_CONTENT = certFileContent;
+  this.CA_FILE_CONTENT = caFileContent;
+  this.TIMEOUT = timeout || _DEFAULT_TIMEOUT;
 };
 
 /**
  * 处理HTTP请求的返回信息（主要是做签名验证），并将xml转换为object
- * @param respXml
+ *
+ * @param {string} respXml
+ * @returns {Promise}
  */
 WXPay.prototype.processResponseXml = function(respXml) {
   var self = this;
@@ -207,8 +215,9 @@ WXPay.prototype.processResponseXml = function(respXml) {
 
 /**
  * 签名是否合法
- * @param dataObj
- * @returns {*|Promise}
+ *
+ * @param {string} dataObj
+ * @returns {Promise}
  */
 WXPay.prototype.isSignatureValid = function(dataObj) {
   var self = this;
@@ -217,8 +226,9 @@ WXPay.prototype.isSignatureValid = function(dataObj) {
 
 /**
  * 生成请求数据（XML格式）
- * @param reqObj
- * @returns {*}
+ *
+ * @param {object} reqObj
+ * @returns {Promise}
  */
 WXPay.prototype.makeRequestBody = function (reqObj) {
   var self = this;
@@ -241,9 +251,11 @@ WXPay.prototype.makeRequestBody = function (reqObj) {
 
 /**
  * HTTP(S) 请求
- * @param urlStr
- * @param reqObj
- * @param timeout
+ *
+ * @param {string} urlStr
+ * @param {object} reqObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.requestWithoutCert = function(urlStr, reqObj, timeout) {
   var self = this;
@@ -254,9 +266,7 @@ WXPay.prototype.requestWithoutCert = function(urlStr, reqObj, timeout) {
     };
     self.makeRequestBody(reqObj).then(function (reqXml) {
       options['body'] = reqXml;
-      // console.log('options:', options);
       request.post(options, function(error, response, body) {
-        // console.log(body);
         if(error){
           reject(error);
         }else{
@@ -271,10 +281,11 @@ WXPay.prototype.requestWithoutCert = function(urlStr, reqObj, timeout) {
 
 /**
  * HTTP(S)请求，附带证书，适合申请退款等接口
- * @param urlStr
- * @param reqObj
- * @param timeout
- * @returns {*}
+ *
+ * @param {string} urlStr
+ * @param {object} reqObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.requestWithCert = function(urlStr, reqObj, timeout) {
   var self = this;
@@ -305,14 +316,15 @@ WXPay.prototype.requestWithCert = function(urlStr, reqObj, timeout) {
 
 /**
  * 提交刷卡支付
- * @param dataObj
- * @param timeout
- * @returns {*}
+ *
+ * @param {object} dataObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.microPay = function (dataObj, timeout) {
   var self = this;
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_MICROPAY_URL, dataObj,  timeout || _DEFAULT_TIMEOUT).then(function (respXml) {
+    self.requestWithoutCert(_MICROPAY_URL, dataObj,  timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -326,14 +338,15 @@ WXPay.prototype.microPay = function (dataObj, timeout) {
 
 /**
  * 统一下单
- * @param dataObj
- * @param timeout
- * @returns {*}
+ *
+ * @param {object} dataObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.unifiedOrder = function (dataObj, timeout) {
   var self = this;
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_UNIFIEDORDER_URL, dataObj,  timeout || _DEFAULT_TIMEOUT).then(function (respXml) {
+    self.requestWithoutCert(_UNIFIEDORDER_URL, dataObj,  timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -347,14 +360,15 @@ WXPay.prototype.unifiedOrder = function (dataObj, timeout) {
 
 /**
  * 查询订单
- * @param dataObj
- * @param timeout
- * @returns {*}
+ *
+ * @param {object} dataObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.orderQuery = function (dataObj, timeout) {
   var self = this;
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_ORDERQUERY_URL, dataObj,  timeout || _DEFAULT_TIMEOUT).then(function (respXml) {
+    self.requestWithoutCert(_ORDERQUERY_URL, dataObj,  timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -368,14 +382,15 @@ WXPay.prototype.orderQuery = function (dataObj, timeout) {
 
 /**
  * 撤销订单, 用于刷卡支付
- * @param dataObj
- * @param timeout
- * @returns {*}
+ *
+ * @param {object} dataObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.reverse = function (dataObj, timeout) {
   var self = this;
   return new Promise(function (resolve, reject) {
-    self.requestWithCert(_REVERSE_URL, dataObj,  timeout || _DEFAULT_TIMEOUT).then(function (respXml) {
+    self.requestWithCert(_REVERSE_URL, dataObj,  timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -390,14 +405,15 @@ WXPay.prototype.reverse = function (dataObj, timeout) {
 
 /**
  * 关闭订单
- * @param dataObj
- * @param timeout
- * @returns {*}
+ *
+ * @param {object} dataObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.closeOrder = function (dataObj, timeout) {
   var self = this;
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_CLOSEORDER_URL, dataObj,  timeout || _DEFAULT_TIMEOUT).then(function (respXml) {
+    self.requestWithoutCert(_CLOSEORDER_URL, dataObj,  timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -412,14 +428,15 @@ WXPay.prototype.closeOrder = function (dataObj, timeout) {
 
 /**
  * 申请退款
- * @param dataObj
- * @param timeout
- * @returns {*}
+ *
+ * @param {object} dataObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.refund = function (dataObj, timeout) {
   var self = this;
   return new Promise(function (resolve, reject) {
-    self.requestWithCert(_REFUND_URL, dataObj,  timeout || _DEFAULT_TIMEOUT).then(function (respXml) {
+    self.requestWithCert(_REFUND_URL, dataObj,  timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -434,14 +451,15 @@ WXPay.prototype.refund = function (dataObj, timeout) {
 
 /**
  * 退款查询
- * @param dataObj
- * @param timeout
- * @returns {*}
+ *
+ * @param {object} dataObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.refundQuery = function (dataObj, timeout) {
   var self = this;
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_REFUNDQUERY_URL, dataObj,  timeout || _DEFAULT_TIMEOUT).then(function (respXml) {
+    self.requestWithoutCert(_REFUNDQUERY_URL, dataObj,  timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -455,14 +473,15 @@ WXPay.prototype.refundQuery = function (dataObj, timeout) {
 
 /**
  * 下载对账单
- * @param dataObj
- * @param timeout
- * @returns {*}
+ *
+ * @param {object} dataObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.downloadBill = function (dataObj, timeout) {
   var self = this;
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_DOWNLOADBILL_URL, dataObj,  timeout || _DEFAULT_TIMEOUT).then(function (respStr) {
+    self.requestWithoutCert(_DOWNLOADBILL_URL, dataObj,  timeout).then(function (respStr) {
       respStr = respStr.trim();
       // console.log('downloadBill data: ', respStr);
       if (respStr.startsWith('<')) {  // XML格式，下载出错
@@ -486,14 +505,15 @@ WXPay.prototype.downloadBill = function (dataObj, timeout) {
 
 /**
  * 交易保障
- * @param dataObj
- * @param timeout
- * @returns {*}
+ *
+ * @param {object} dataObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.report = function (dataObj, timeout) {
   var self = this;
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_REPORT_URL, dataObj,  timeout || _DEFAULT_TIMEOUT).then(function (respXml) {
+    self.requestWithoutCert(_REPORT_URL, dataObj,  timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -507,14 +527,15 @@ WXPay.prototype.report = function (dataObj, timeout) {
 
 /**
  * 转换短链接
- * @param dataObj
- * @param timeout
- * @returns {*}
+ *
+ * @param {object} dataObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.shortUrl = function (dataObj, timeout) {
   var self = this;
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_SHORTURL_URL, dataObj,  timeout || _DEFAULT_TIMEOUT).then(function (respXml) {
+    self.requestWithoutCert(_SHORTURL_URL, dataObj,  timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -527,15 +548,16 @@ WXPay.prototype.shortUrl = function (dataObj, timeout) {
 };
 
 /**
- * 授权码查询OPENID接口
- * @param dataObj
- * @param timeout
- * @returns {*}
+ * 授权码查询 OPENID 接口
+ *
+ * @param {object} dataObj
+ * @param {int} timeout
+ * @returns {Promise}
  */
 WXPay.prototype.authCodeToOpenid = function (dataObj, timeout) {
   var self = this;
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_AUTHCODETOOPENID_URL, dataObj,  timeout || _DEFAULT_TIMEOUT).then(function (respXml) {
+    self.requestWithoutCert(_AUTHCODETOOPENID_URL, dataObj,  timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
