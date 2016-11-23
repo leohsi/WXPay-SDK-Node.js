@@ -148,7 +148,7 @@ var WXPayUtil = {
    */
   generateNonceStr: function () {
     return new Promise(function (resolve, reject) {
-      resolve( uuid.v4().replace(/\-/g,"") );
+      resolve( uuid.v4().replace(/\-/g, "") );
     });
   }
 
@@ -178,7 +178,7 @@ var WXPay = function (appId, mchId, key, certFileContent, caFileContent, timeout
 };
 
 /**
- * 处理HTTP请求的返回信息（主要是做签名验证），并将xml转换为object
+ * 处理 HTTP 请求的返回信息（主要是做签名验证），并将 xml 转换为 object
  *
  * @param {string} respXml
  * @returns {Promise}
@@ -483,7 +483,6 @@ WXPay.prototype.downloadBill = function (dataObj, timeout) {
   return new Promise(function (resolve, reject) {
     self.requestWithoutCert(_DOWNLOADBILL_URL, dataObj,  timeout).then(function (respStr) {
       respStr = respStr.trim();
-      // console.log('downloadBill data: ', respStr);
       if (respStr.startsWith('<')) {  // XML格式，下载出错
         self.processResponseXml(respStr).then(function (respObj) {
           resolve(respObj);
