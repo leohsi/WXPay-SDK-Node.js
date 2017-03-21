@@ -2,25 +2,54 @@
 
 var Promise = require('promise');
 var request = require('request');
-var md5     = require('md5');
+var Md5     = require('md5');
 var xml2js  = require('xml2js');
 var uuid    = require('uuid');
+var crypto = require("crypto");
 
-
-var _SIGN = "sign";
 var _DEFAULT_TIMEOUT = 10*1000; // ms
 
-var _MICROPAY_URL     = 'https://api.mch.weixin.qq.com/pay/micropay',
-    _UNIFIEDORDER_URL = 'https://api.mch.weixin.qq.com/pay/unifiedorder',
-    _ORDERQUERY_URL   = 'https://api.mch.weixin.qq.com/pay/orderquery',
-    _REVERSE_URL      = 'https://api.mch.weixin.qq.com/secapi/pay/reverse',
-    _CLOSEORDER_URL   = 'https://api.mch.weixin.qq.com/pay/closeorder',
-    _REFUND_URL       = 'https://api.mch.weixin.qq.com/secapi/pay/refund',
-    _REFUNDQUERY_URL  = 'https://api.mch.weixin.qq.com/pay/refundquery',
-    _DOWNLOADBILL_URL = 'https://api.mch.weixin.qq.com/pay/downloadbill',
-    _REPORT_URL       = 'https://api.mch.weixin.qq.com/pay/report',
-    _SHORTURL_URL     = 'https://api.mch.weixin.qq.com/tools/shorturl',
-    _AUTHCODETOOPENID_URL = 'https://api.mch.weixin.qq.com/tools/authcodetoopenid';
+var WXPayConstants = {
+
+  // SUCCESS, FAIL
+  SUCCESS : "SUCCESS",
+  FAIL : "FAIL",
+
+  // 签名类型
+  SIGN_TYPE_HMACSHA256 : "HMAC-SHA256",
+  SIGN_TYPE_MD5 : "MD5",
+
+  // 字段
+  FIELD_SIGN : "sign",
+  FIELD_SIGN_TYPE : "sign_type",
+
+  // URL
+  MICROPAY_URL : "https://api.mch.weixin.qq.com/pay/micropay",
+  UNIFIEDORDER_URL : "https://api.mch.weixin.qq.com/pay/unifiedorder",
+  ORDERQUERY_URL : "https://api.mch.weixin.qq.com/pay/orderquery",
+  REVERSE_URL : "https://api.mch.weixin.qq.com/secapi/pay/reverse",
+  CLOSEORDER_URL : "https://api.mch.weixin.qq.com/pay/closeorder",
+  REFUND_URL : "https://api.mch.weixin.qq.com/secapi/pay/refund",
+  REFUNDQUERY_URL : "https://api.mch.weixin.qq.com/pay/refundquery",
+  DOWNLOADBILL_URL : "https://api.mch.weixin.qq.com/pay/downloadbill",
+  REPORT_URL : "https://api.mch.weixin.qq.com/payitil/report",
+  SHORTURL_URL : "https://api.mch.weixin.qq.com/tools/shorturl",
+  AUTHCODETOOPENID_URL : "https://api.mch.weixin.qq.com/tools/authcodetoopenid",
+
+  // Sandbox URL
+  SANDBOX_MICROPAY_URL : "https://api.mch.weixin.qq.com/sandboxnew/pay/micropay",
+  SANDBOX_UNIFIEDORDER_URL : "https://api.mch.weixin.qq.com/sandboxnew/pay/unifiedorder",
+  SANDBOX_ORDERQUERY_URL : "https://api.mch.weixin.qq.com/sandboxnew/pay/orderquery",
+  SANDBOX_REVERSE_URL : "https://api.mch.weixin.qq.com/sandboxnew/secapi/pay/reverse",
+  SANDBOX_CLOSEORDER_URL : "https://api.mch.weixin.qq.com/sandboxnew/pay/closeorder",
+  SANDBOX_REFUND_URL : "https://api.mch.weixin.qq.com/sandboxnew/secapi/pay/refund",
+  SANDBOX_REFUNDQUERY_URL : "https://api.mch.weixin.qq.com/sandboxnew/pay/refundquery",
+  SANDBOX_DOWNLOADBILL_URL : "https://api.mch.weixin.qq.com/sandboxnew/pay/downloadbill",
+  SANDBOX_REPORT_URL : "https://api.mch.weixin.qq.com/sandboxnew/payitil/report",
+  SANDBOX_SHORTURL_URL : "https://api.mch.weixin.qq.com/sandboxnew/tools/shorturl",
+  SANDBOX_AUTHCODETOOPENID_URL : "https://api.mch.weixin.qq.com/sandboxnew/tools/authcodetoopenid",
+
+};
 
 var WXPayUtil = {
 
@@ -40,7 +69,7 @@ var WXPayUtil = {
         else {
           var data = result['xml'];
           var newData = {};
-          Object.keys(data).sort().forEach(function(key, idx) {
+          Object.keys(data).forEach(function(key, idx) {
             if (data[key].length > 0)
               newData[key] = data[key][0];
           });
@@ -71,69 +100,79 @@ var WXPayUtil = {
   /**
    * 生成签名
    *
-   * @param {object} dataObj
-   * @param {string} keyStr
-   * @returns {Promise}
+   * @param {object} data
+   * @param {string} key API key
+   * @param {string} signType
+   * @returns {string}
    */
-  generateSignature: function (dataObj, keyStr) {
-    return new Promise(function (resolve, reject) {
-      var temp = '';
-      Object.keys(dataObj).sort().forEach(function(key, idx) {
-        if( key !== _SIGN  && dataObj[key] ){
-          var value = '' + dataObj[key];
-          if (value.length > 0) {
-            temp += key + '=' + dataObj[key] + '&';
-          }
+  generateSignature: function (data, key, signType) {
+    signType = signType || WXPayConstants.SIGN_TYPE_MD5;
+    if (signType !== WXPayConstants.SIGN_TYPE_MD5 && signType !== WXPayConstants.SIGN_TYPE_HMACSHA256) {
+      throw new Error("Invalid signType: " + signType);
+    }
+    var combineStr = '';
+    var ks = Object.keys(data).sort();
+    for (var i=0; i<ks.length; ++i) {
+      var k = ks[i];
+      if( k !== WXPayConstants.FIELD_SIGN  && data[k] ) {
+        var v = '' + data[k];
+        if (v.length > 0) {
+          combineStr = combineStr + k + '=' + v + '&';
         }
-      });
-      if (temp.length == 0) {
-        reject(new Error('There is no data to generate signature'));
+      }
+    }
+    if (combineStr.length == 0) {
+      throw new Error("There is no data to generate signature");
+    }
+    else {
+      combineStr = combineStr + 'key=' + key;
+      if (signType === WXPayConstants.SIGN_TYPE_MD5) {
+        return this.md5(combineStr);
+      }
+      else if (signType === WXPayConstants.SIGN_TYPE_HMACSHA256) {
+        return this.hmacsha256(combineStr, key);
       }
       else {
-        resolve( md5(temp+'key='+keyStr).toUpperCase() );
+        throw new Error("Invalid signType: " + signType);
       }
-    });
+    }
   },
 
   /**
    * 验证签名
    *
-   * @param {object} dataObj
-   * @param {string} keyStr
-   * @returns {Promise}
+   * @param {object} data
+   * @param {string} key API key
+   * @param {string} signType
+   * @returns {boolean}
    */
-  isSignatureValid: function (dataObj, keyStr) {
-    return new Promise(function (resolve, reject) {
-      if (dataObj === null || typeof dataObj !== 'object') {
-        resolve(false);
-      }
-      else if (!dataObj[_SIGN]) {
-        resolve(false);
-      }
-      else {
-        WXPayUtil.generateSignature(dataObj, keyStr).then(function (sign) {
-          resolve(dataObj[_SIGN] === sign);
-        }).catch(function (err) {
-          reject(err);
-        });
-      }
-    });
+  isSignatureValid: function (data, key, signType) {
+    signType = signType || WXPayConstants.SIGN_TYPE_MD5;
+    if (data === null || typeof data !== 'object') {
+      return false;
+    }
+    else if (!data[WXPayConstants.FIELD_SIGN]) {
+      return false;
+    }
+    else {
+      return data[WXPayConstants.FIELD_SIGN] === this.generateSignature(data, key, signType);
+    }
   },
 
   /**
-   * 生成签名
+   * 带有签名的 XML 数据
    *
-   * @param {object} dataObj
-   * @param {string} keyStr
+   * @param {object} data
+   * @param {string} key
+   * @param {string} signType
    * @returns {Promise}
    */
-  generateSignedXml: function (dataObj, keyStr) {
+  generateSignedXml: function (data, key, signType) {
+    var clonedDataObj = JSON.parse(JSON.stringify(data));
+    clonedDataObj[WXPayConstants.FIELD_SIGN] = this.generateSignature(data, key, signType);
     return new Promise(function (resolve, reject) {
-      var clonedDataObj = JSON.parse(JSON.stringify(dataObj));
-      WXPayUtil.generateSignature(clonedDataObj, keyStr).then(function (sign) {
-        clonedDataObj[_SIGN] = sign;
-        return WXPayUtil.obj2xml(clonedDataObj);
-      }).then(function (xmlStr) {
+      WXPayUtil.obj2xml(clonedDataObj)
+      .then(function (xmlStr) {
         resolve(xmlStr);
       }).catch(function (err) {
         reject(err);
@@ -144,12 +183,31 @@ var WXPayUtil = {
   /**
    * 生成随机字符串
    *
-   * @returns {Promise}
+   * @returns {string}
    */
   generateNonceStr: function () {
-    return new Promise(function (resolve, reject) {
-      resolve( uuid.v4().replace(/\-/g, "") );
-    });
+    return uuid.v4().replace(/\-/g, "");
+  },
+
+  /**
+   * 得到 MD5 签名结果
+   *
+   * @param {string} source
+   * @returns {string}
+   */
+  md5: function (source) {
+    return Md5(source).toUpperCase();
+  },
+
+  /**
+   * 得到 HMAC-SHA256 签名结果
+   *
+   * @param {string} source
+   * @param {string} key
+   * @returns {string}
+   */
+  hmacsha256: function (source, key) {
+    return crypto.createHmac("sha256", key).update(source, 'utf8').digest("hex").toUpperCase();
   }
 
 };
@@ -157,24 +215,29 @@ var WXPayUtil = {
 /**
  * WXPay对象
  *
- * @param {string} appId
- * @param {string} mchId
- * @param {string} key
- * @param {string} certFileContent
- * @param {string} caFileContent
- * @param {int} timeout
+ * @param {object} config
  * @constructor
  */
-var WXPay = function (appId, mchId, key, certFileContent, caFileContent, timeout) {
+var WXPay = function (config) {
   if(!(this instanceof WXPay)) {
     throw new TypeError('Please use \'new WXPay\'');
   }
-  this.APPID = appId;
-  this.MCHID = mchId;
-  this.KEY = key;
-  this.CERT_FILE_CONTENT = certFileContent;
-  this.CA_FILE_CONTENT = caFileContent;
-  this.TIMEOUT = timeout || _DEFAULT_TIMEOUT;
+  var options = ['appId', 'mchId', 'key', 'certFileContent', 'caFileContent'];
+  for (var i=0; i<options.length; ++i) {
+    if (!config[options[i]]) {
+      throw new Error('Please check '+options[i] + ' in config');
+    }
+  }
+
+  this.APPID = config['appId'];
+  this.MCHID = config['mchId'];
+  this.KEY = config['key'];
+  this.CERT_FILE_CONTENT = config['certFileContent'];
+  this.CA_FILE_CONTENT = config['caFileContent'];
+
+  this.TIMEOUT = config['timeout'] || _DEFAULT_TIMEOUT;
+  this.SIGN_TYPE = config['signType'] || WXPayConstants.SIGN_TYPE_MD5;
+  this.USE_SANDBOX = config['useSandbox'] || false;
 };
 
 /**
@@ -185,26 +248,29 @@ var WXPay = function (appId, mchId, key, certFileContent, caFileContent, timeout
  */
 WXPay.prototype.processResponseXml = function(respXml) {
   var self = this;
+
   return new Promise(function (resolve, reject) {
     WXPayUtil.xml2obj(respXml).then(function (respObj) {
       var return_code = respObj['return_code'];
       if (return_code) {
-        if (return_code === 'FAIL') {
+        if (return_code === WXPayConstants.FAIL) {
           resolve(respObj);
         }
+        else if (return_code === WXPayConstants.SUCCESS) {
+          var isValid = self.isResponseSignatureValid(respObj);
+          if (isValid) {
+            resolve(respObj);
+          }
+          else {
+            reject(new Error('Invalid sign value in XML: ' + respXml));
+          }
+        }
         else {
-          WXPayUtil.isSignatureValid(respObj, self.KEY).then(function (isValid) {
-            if(isValid) {
-              resolve(respObj);
-            }
-            else {
-              reject(new Error('signature is not valid'));
-            }
-          });
+          reject(new Error('Invalid return_code in XML: ' + respXml));
         }
       }
       else {
-        reject(new Error('no return_code in the response data'));
+        reject(new Error('no return_code in the response XML: ' + respXml));
       }
     }).catch(function (err) {
       reject(err);
@@ -214,62 +280,86 @@ WXPay.prototype.processResponseXml = function(respXml) {
 
 
 /**
- * 签名是否合法
+ * 请求响应中的签名是否合法
  *
- * @param {string} dataObj
- * @returns {Promise}
+ * @param {object} respData
+ * @returns {boolean}
  */
-WXPay.prototype.isSignatureValid = function(dataObj) {
-  var self = this;
-  return WXPayUtil.isSignatureValid(dataObj, self.KEY);
+WXPay.prototype.isResponseSignatureValid = function(respData) {
+  return WXPayUtil.isSignatureValid(respData, this.KEY, this.SIGN_TYPE);
 };
 
 /**
- * 生成请求数据（XML格式）
+ * 判断支付结果通知中的sign是否有效。必须有sign字段
  *
- * @param {object} reqObj
- * @returns {Promise}
+ * @param {object} notifyData
+ * @returns {boolean}
  */
-WXPay.prototype.makeRequestBody = function (reqObj) {
-  var self = this;
-  return new Promise(function (resolve, reject) {
-    var clonedData = JSON.parse(JSON.stringify(reqObj));
-    clonedData['appid'] = self.APPID;
-    clonedData['mch_id'] = self.MCHID;
-    WXPayUtil.generateNonceStr().then(function (nonceStr) {
-      clonedData['nonce_str'] = nonceStr;
-      WXPayUtil.generateSignedXml(clonedData, self.KEY).then(function(signedXml){
-        resolve(signedXml);
-      }).catch(function (err) {
-        reject(err);
-      });
-    }).catch(function (err) {
-      reject(err);
-    });
-  });
+WXPay.prototype.isPayResultNotifySignatureValid = function(notifyData) {
+  var signType;
+  var signTypeInData = notifyData[WXPayConstants.FIELD_SIGN_TYPE];
+  if (!signTypeInData) {
+    signType = WXPayConstants.SIGN_TYPE_MD5;
+  }
+  else {
+    signTypeInData = (''+signTypeInData).trim();
+    if (signTypeInData.length == 0) {
+      signType = WXPayConstants.SIGN_TYPE_MD5;
+    }
+    else if (signTypeInData === WXPayConstants.SIGN_TYPE_MD5) {
+      signType = WXPayConstants.SIGN_TYPE_MD5;
+    }
+    else if (signTypeInData === WXPayConstants.SIGN_TYPE_HMACSHA256) {
+      signType = WXPayConstants.SIGN_TYPE_HMACSHA256;
+    }
+    else {
+      throw new Error("Invalid sign_type: "+signTypeInData+" in pay result notify");
+    }
+  }
+  return WXPayUtil.isSignatureValid(notifyData, this.KEY, signType);
+
 };
 
 /**
- * HTTP(S) 请求
+ * 向数据中添加appid、mch_id、nonce_str、sign_type、sign
  *
- * @param {string} urlStr
- * @param {object} reqObj
+ * @param {object} reqData
+ * @returns {object}
+ */
+WXPay.prototype.fillRequestData = function (reqData) {
+  var self = this;
+  var clonedData = JSON.parse(JSON.stringify(reqData));
+  clonedData['appid'] = self.APPID;
+  clonedData['mch_id'] = self.MCHID;
+  clonedData['nonce_str'] = WXPayUtil.generateNonceStr();
+  clonedData[WXPayConstants.FIELD_SIGN_TYPE] = self.SIGN_TYPE;
+  clonedData[WXPayConstants.FIELD_SIGN] = WXPayUtil.generateSignature(clonedData, self.KEY, self.SIGN_TYPE);
+  return clonedData;
+};
+
+/**
+ * HTTP(S) 请求，无证书
+ *
+ * @param {string} url
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.requestWithoutCert = function(urlStr, reqObj, timeout) {
+WXPay.prototype.requestWithoutCert = function(url, reqData, timeout) {
   var self = this;
   return new Promise(function(resolve, reject) {
     var options = {
-      url: urlStr,
+      url: url,
       timeout: timeout || self.TIMEOUT
     };
-    self.makeRequestBody(reqObj).then(function (reqXml) {
+    WXPayUtil.obj2xml(reqData).then(function (reqXml) {
+      // console.log('reqXml', reqXml);
       options['body'] = reqXml;
       request.post(options, function(error, response, body) {
         if(error){
           reject(error);
         }else{
+          // console.log('resp: ', body);
           resolve(body);
         }
       });
@@ -282,16 +372,16 @@ WXPay.prototype.requestWithoutCert = function(urlStr, reqObj, timeout) {
 /**
  * HTTP(S)请求，附带证书，适合申请退款等接口
  *
- * @param {string} urlStr
- * @param {object} reqObj
+ * @param {string} url
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.requestWithCert = function(urlStr, reqObj, timeout) {
+WXPay.prototype.requestWithCert = function(url, reqData, timeout) {
   var self = this;
   return new Promise(function(resolve, reject) {
     var options = {
-      url: urlStr,
+      url: url,
       timeout: timeout || self.TIMEOUT,
       agentOptions: {
         ca: self.CA_FILE_CONTENT,
@@ -299,7 +389,7 @@ WXPay.prototype.requestWithCert = function(urlStr, reqObj, timeout) {
         passphrase: self.MCHID
       }
     };
-    self.makeRequestBody(reqObj).then(function (reqXml) {
+    WXPayUtil.obj2xml(reqData).then(function (reqXml) {
       options['body'] = reqXml;
       request.post(options, function(error, response, body) {
         if(error){
@@ -307,9 +397,9 @@ WXPay.prototype.requestWithCert = function(urlStr, reqObj, timeout) {
         }else{
           resolve(body);
         }
-      }).catch(function (err) {
-        reject(err);
       });
+    }).catch(function (err) {
+      reject(err);
     });
   });
 };
@@ -317,14 +407,18 @@ WXPay.prototype.requestWithCert = function(urlStr, reqObj, timeout) {
 /**
  * 提交刷卡支付
  *
- * @param {object} dataObj
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.microPay = function (dataObj, timeout) {
+WXPay.prototype.microPay = function (reqData, timeout) {
   var self = this;
+  var url = WXPayConstants.MICROPAY_URL;
+  if (self.USE_SANDBOX) {
+    url = WXPayConstants.SANDBOX_MICROPAY_URL;
+  }
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_MICROPAY_URL, dataObj,  timeout).then(function (respXml) {
+    self.requestWithoutCert(url, self.fillRequestData(reqData), timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -339,14 +433,18 @@ WXPay.prototype.microPay = function (dataObj, timeout) {
 /**
  * 统一下单
  *
- * @param {object} dataObj
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.unifiedOrder = function (dataObj, timeout) {
+WXPay.prototype.unifiedOrder = function (reqData, timeout) {
   var self = this;
+  var url = WXPayConstants.UNIFIEDORDER_URL;
+  if (self.USE_SANDBOX) {
+    url = WXPayConstants.SANDBOX_UNIFIEDORDER_URL;
+  }
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_UNIFIEDORDER_URL, dataObj,  timeout).then(function (respXml) {
+    self.requestWithoutCert(url, self.fillRequestData(reqData), timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -361,14 +459,18 @@ WXPay.prototype.unifiedOrder = function (dataObj, timeout) {
 /**
  * 查询订单
  *
- * @param {object} dataObj
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.orderQuery = function (dataObj, timeout) {
+WXPay.prototype.orderQuery = function (reqData, timeout) {
   var self = this;
+  var url = WXPayConstants.ORDERQUERY_URL;
+  if (self.USE_SANDBOX) {
+    url = WXPayConstants.SANDBOX_ORDERQUERY_URL;
+  }
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_ORDERQUERY_URL, dataObj,  timeout).then(function (respXml) {
+    self.requestWithoutCert(url, self.fillRequestData(reqData), timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -383,14 +485,18 @@ WXPay.prototype.orderQuery = function (dataObj, timeout) {
 /**
  * 撤销订单, 用于刷卡支付
  *
- * @param {object} dataObj
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.reverse = function (dataObj, timeout) {
+WXPay.prototype.reverse = function (reqData, timeout) {
   var self = this;
+  var url = WXPayConstants.REVERSE_URL;
+  if (self.USE_SANDBOX) {
+    url = WXPayConstants.SANDBOX_REVERSE_URL;
+  }
   return new Promise(function (resolve, reject) {
-    self.requestWithCert(_REVERSE_URL, dataObj,  timeout).then(function (respXml) {
+    self.requestWithCert(url, self.fillRequestData(reqData), timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -406,14 +512,18 @@ WXPay.prototype.reverse = function (dataObj, timeout) {
 /**
  * 关闭订单
  *
- * @param {object} dataObj
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.closeOrder = function (dataObj, timeout) {
+WXPay.prototype.closeOrder = function (reqData, timeout) {
   var self = this;
+  var url = WXPayConstants.CLOSEORDER_URL;
+  if (self.USE_SANDBOX) {
+    url = WXPayConstants.SANDBOX_CLOSEORDER_URL;
+  }
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_CLOSEORDER_URL, dataObj,  timeout).then(function (respXml) {
+    self.requestWithoutCert(url, self.fillRequestData(reqData), timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -429,14 +539,18 @@ WXPay.prototype.closeOrder = function (dataObj, timeout) {
 /**
  * 申请退款
  *
- * @param {object} dataObj
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.refund = function (dataObj, timeout) {
+WXPay.prototype.refund = function (reqData, timeout) {
   var self = this;
+  var url = WXPayConstants.REFUND_URL;
+  if (self.USE_SANDBOX) {
+    url = WXPayConstants.SANDBOX_REFUND_URL;
+  }
   return new Promise(function (resolve, reject) {
-    self.requestWithCert(_REFUND_URL, dataObj,  timeout).then(function (respXml) {
+    self.requestWithCert(url, self.fillRequestData(reqData), timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -452,14 +566,18 @@ WXPay.prototype.refund = function (dataObj, timeout) {
 /**
  * 退款查询
  *
- * @param {object} dataObj
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.refundQuery = function (dataObj, timeout) {
+WXPay.prototype.refundQuery = function (reqData, timeout) {
   var self = this;
+  var url = WXPayConstants.REFUNDQUERY_URL;
+  if (self.USE_SANDBOX) {
+    url = WXPayConstants.SANDBOX_REFUNDQUERY_URL;
+  }
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_REFUNDQUERY_URL, dataObj,  timeout).then(function (respXml) {
+    self.requestWithoutCert(url, self.fillRequestData(reqData), timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -474,14 +592,18 @@ WXPay.prototype.refundQuery = function (dataObj, timeout) {
 /**
  * 下载对账单
  *
- * @param {object} dataObj
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.downloadBill = function (dataObj, timeout) {
+WXPay.prototype.downloadBill = function (reqData, timeout) {
   var self = this;
+  var url = WXPayConstants.DOWNLOADBILL_URL;
+  if (self.USE_SANDBOX) {
+    url = WXPayConstants.SANDBOX_DOWNLOADBILL_URL;
+  }
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_DOWNLOADBILL_URL, dataObj,  timeout).then(function (respStr) {
+    self.requestWithoutCert(url, self.fillRequestData(reqData), timeout).then(function (respStr) {
       respStr = respStr.trim();
       if (respStr.startsWith('<')) {  // XML格式，下载出错
         self.processResponseXml(respStr).then(function (respObj) {
@@ -505,15 +627,19 @@ WXPay.prototype.downloadBill = function (dataObj, timeout) {
 /**
  * 交易保障
  *
- * @param {object} dataObj
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.report = function (dataObj, timeout) {
+WXPay.prototype.report = function (reqData, timeout) {
   var self = this;
+  var url = WXPayConstants.REPORT_URL;
+  if (self.USE_SANDBOX) {
+    url = WXPayConstants.SANDBOX_REPORT_URL;
+  }
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_REPORT_URL, dataObj,  timeout).then(function (respXml) {
-      self.processResponseXml(respXml).then(function (respObj) {
+    self.requestWithoutCert(url, self.fillRequestData(reqData), timeout).then(function (respXml) {
+      WXPayUtil.xml2obj(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
         reject(err);
@@ -527,14 +653,18 @@ WXPay.prototype.report = function (dataObj, timeout) {
 /**
  * 转换短链接
  *
- * @param {object} dataObj
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.shortUrl = function (dataObj, timeout) {
+WXPay.prototype.shortUrl = function (reqData, timeout) {
   var self = this;
+  var url = WXPayConstants.SHORTURL_URL;
+  if (self.USE_SANDBOX) {
+    url = WXPayConstants.SANDBOX_SHORTURL_URL;
+  }
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_SHORTURL_URL, dataObj,  timeout).then(function (respXml) {
+    self.requestWithoutCert(url, self.fillRequestData(reqData), timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -549,14 +679,18 @@ WXPay.prototype.shortUrl = function (dataObj, timeout) {
 /**
  * 授权码查询 OPENID 接口
  *
- * @param {object} dataObj
+ * @param {object} reqData
  * @param {int} timeout
  * @returns {Promise}
  */
-WXPay.prototype.authCodeToOpenid = function (dataObj, timeout) {
+WXPay.prototype.authCodeToOpenid = function (reqData, timeout) {
   var self = this;
+  var url = WXPayConstants.AUTHCODETOOPENID_URL;
+  if (self.USE_SANDBOX) {
+    url = WXPayConstants.SANDBOX_AUTHCODETOOPENID_URL;
+  }
   return new Promise(function (resolve, reject) {
-    self.requestWithoutCert(_AUTHCODETOOPENID_URL, dataObj,  timeout).then(function (respXml) {
+    self.requestWithoutCert(url, self.fillRequestData(reqData), timeout).then(function (respXml) {
       self.processResponseXml(respXml).then(function (respObj) {
         resolve(respObj);
       }).catch(function (err) {
@@ -569,6 +703,7 @@ WXPay.prototype.authCodeToOpenid = function (dataObj, timeout) {
 };
 
 module.exports = {
+  WXPayConstants: WXPayConstants,
   WXPayUtil: WXPayUtil,
   WXPay: WXPay
 };

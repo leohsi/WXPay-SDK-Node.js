@@ -40,6 +40,7 @@ $ npm install wxpay.js --save
 
 var fs = require('fs');
 var WXPay = require('wxpay.js').WXPay;
+var WXPayConstants = require('wxpay.js').WXPayConstants;
 
 var APPID = 'wx8888888888',
     MCHID = '8888888',
@@ -47,15 +48,25 @@ var APPID = 'wx8888888888',
     CERT_FILE_CONTENT = fs.readFileSync('/path/to/apiclient_cert.p12'),
     CA_FILE_CONTENT = fs.readFileSync('/path/to/rootca.pem'),
     TIMEOUT = 10000; // 毫秒
+    
+var wxpay = new WXPay({
+  appId: APPID,
+  mchId: MCHID,
+  key: KEY,
+  certFileContent: CERT_FILE_CONTENT,
+  caFileContent: CA_FILE_CONTENT,
+  timeout: TIMEOUT,
+  signType: WXPayConstants.SIGN_TYPE_HMACSHA256,  // 使用 HMAC-SHA256 签名，也可以选择  WXPayConstants.SIGN_TYPE_MD5
+  useSandbox: false   // 不使用沙箱环境
+});
 
-var wxpay = new WXPay(APPID, MCHID, KEY, CERT_FILE_CONTENT, CA_FILE_CONTENT, TIMEOUT);
 
 var reqObj = {
   body: '商城-商品1',
   out_trade_no: '1478582754970',
   total_fee: 1,
   spbill_create_ip: '123.12.12.123',
-  notify_url: 'http://www.example.com',
+  notify_url: 'http://www.example.com/wxpay/notify',
   trade_type: 'NATIVE'
 };
 
@@ -65,7 +76,6 @@ wxpay.unifiedOrder(reqObj).then(function(respObj) {
   console.log(err);
 });
 ```
-
 
 ## License
 BSD

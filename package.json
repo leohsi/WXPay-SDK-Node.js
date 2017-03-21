@@ -1,6 +1,6 @@
 {
   "name": "wxpay.js",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "WXPay Node.js SDK",
   "main": "index.js",
   "scripts": {
